@@ -10,26 +10,55 @@ import {
   setDismissed,
 } from "./core";
 
+export type AppBannerPlacement = "top" | "bottom";
+
 export type AppBannerProps = {
   /** Override the link registry; defaults to the shared EducationXR targets. */
   targets?: Record<Platform, BannerTarget | null>;
-  /** Optional app icon rendered at the left of the bar. */
+  /** App icon rendered at the left (48x48, rounded by the stylesheet). */
   icon?: ReactNode;
+  /** "bottom" (default) or "top" (App-Store-banner style, hides on scroll
+   *  down / reveals on scroll up). A `?eab=top|bottom|off` query param
+   *  overrides this at runtime for live comparison. */
+  placement?: AppBannerPlacement;
+  /** Bold first line. */
+  title?: string;
+  /** Muted second line, App Store subtitle style. */
+  subtitle?: string;
 };
 
 /**
- * Fixed bottom "get the app" bar. Renders nothing on the server and on the
- * first client render; after mount it decides whether to show. While shown it
- * reserves matching body padding-bottom so it never covers content and never
- * shifts anything above the fold (no CLS).
+ * Platform-aware "get the app" banner, Apple-banner visual language:
+ * icon + title/subtitle + pill CTA + circular dismiss.
+ *
+ * Renders nothing on the server and the first client render. While visible it
+ * reserves matching body padding (bottom or top) and broadcasts coordination
+ * signals on <html> so the host page can move competing fixed widgets (e.g. a
+ * cookie-consent badge) out of the way:
+ *   html[data-eab-placement="top"|"bottom"][data-eab-visible] + --eab-h (px).
  */
-export function AppBanner({ targets = EDXR_TARGETS, icon }: AppBannerProps) {
+export function AppBanner({
+  targets = EDXR_TARGETS,
+  icon,
+  placement = "bottom",
+  title = "EducationXR",
+  subtitle = "Immersive 3D learning platform",
+}: AppBannerProps) {
   const [target, setTarget] = useState<BannerTarget | null>(null);
+  const [livePlacement, setLivePlacement] = useState<AppBannerPlacement>(placement);
+  const [hidden, setHidden] = useState(false); // top-mode scroll state
   const barRef = useRef<HTMLDivElement | null>(null);
 
+  // Decide whether/where to show, once, after mount.
   useEffect(() => {
     let alive = true;
     (async () => {
+      const params = new URLSearchParams(window.location.search);
+      const override = params.get("eab");
+      if (override === "off") return;
+      const resolved: AppBannerPlacement =
+        override === "top" || override === "bottom" ? override : placement;
+
       const ua = navigator.userAgent;
       const touch = navigator.maxTouchPoints ?? 0;
       const platform = detectPlatform(ua, touch);
@@ -37,40 +66,80 @@ export function AppBanner({ targets = EDXR_TARGETS, icon }: AppBannerProps) {
       if (isIosSafari(ua, touch)) return; // native Smart App Banner territory
       if (getDismissed()) return;
       if (await checkInstalled()) return;
-      if (alive) setTarget(targets[platform]);
+      if (alive) {
+        setLivePlacement(resolved);
+        setTarget(targets[platform]);
+      }
     })();
     return () => {
       alive = false;
     };
-  }, [targets]);
+  }, [targets, placement]);
 
-  // Reserve space below the page content while the bar is visible. A
-  // ResizeObserver keeps the reservation in sync as the bar's height
-  // changes after mount (e.g. env(safe-area-inset-bottom) on iOS
-  // orientation change), and useLayoutEffect applies it before paint so
-  // there's no overlap flash. Falls back to a single measurement in
-  // environments without ResizeObserver.
+  // Top mode: hide on scroll down, reveal on scroll up (rAF-throttled).
+  useEffect(() => {
+    if (!target || livePlacement !== "top") return;
+    let lastY = window.scrollY;
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        const y = window.scrollY;
+        const dy = y - lastY;
+        if (y < 40) setHidden(false);
+        else if (dy > 6) setHidden(true);
+        else if (dy < -6) setHidden(false);
+        lastY = y;
+        ticking = false;
+      });
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [target, livePlacement]);
+
+  // Reserve space + broadcast coordination signals while visible. Pre-paint
+  // (layout effect) so the bar never overlaps content for a frame, and a
+  // ResizeObserver keeps the reservation in sync when the bar's height
+  // changes (e.g. safe-area insets appearing when browser toolbars hide).
   useLayoutEffect(() => {
-    if (!target || !barRef.current) return;
     const bar = barRef.current;
-    const prev = document.body.style.paddingBottom;
-    const applyHeight = () => {
-      const h = bar.getBoundingClientRect().height;
-      document.body.style.paddingBottom = `${Math.ceil(h)}px`;
+    if (!target || !bar) return;
+    const root = document.documentElement;
+    const side = livePlacement === "top" ? "paddingTop" : "paddingBottom";
+    const prev = document.body.style[side];
+
+    const apply = () => {
+      const h = Math.ceil(bar.getBoundingClientRect().height);
+      document.body.style[side] = `${h}px`;
+      root.style.setProperty("--eab-h", `${h}px`);
     };
-    applyHeight();
-    if (typeof ResizeObserver === "undefined") {
-      return () => {
-        document.body.style.paddingBottom = prev;
-      };
+
+    root.dataset.eabPlacement = livePlacement;
+    apply();
+
+    let observer: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(apply);
+      observer.observe(bar);
     }
-    const observer = new ResizeObserver(applyHeight);
-    observer.observe(bar);
     return () => {
-      observer.disconnect();
-      document.body.style.paddingBottom = prev;
+      observer?.disconnect();
+      document.body.style[side] = prev;
+      delete root.dataset.eabPlacement;
+      delete root.dataset.eabVisible;
+      root.style.removeProperty("--eab-h");
     };
-  }, [target]);
+  }, [target, livePlacement]);
+
+  // Visibility signal tracks the top-mode scroll state so coordinated
+  // widgets (and the host header) slide together with the bar.
+  useEffect(() => {
+    if (!target) return;
+    const root = document.documentElement;
+    if (hidden) delete root.dataset.eabVisible;
+    else root.dataset.eabVisible = "1";
+  }, [target, hidden]);
 
   if (!target) return null;
 
@@ -80,15 +149,26 @@ export function AppBanner({ targets = EDXR_TARGETS, icon }: AppBannerProps) {
   };
 
   return (
-    <div className="eab-banner" role="region" aria-label="Get the app" ref={barRef}>
-      {icon ? <span className="eab-icon">{icon}</span> : null}
-      <span className="eab-label">{target.label}</span>
-      <a className="eab-cta" href={target.href} target="_blank" rel="noopener noreferrer">
-        Get
-      </a>
-      <button className="eab-dismiss" type="button" aria-label="Dismiss" onClick={dismiss}>
-        &#x2715;
-      </button>
+    <div
+      className={`eab-banner${hidden ? " eab-hidden" : ""}`}
+      data-p={livePlacement}
+      role="region"
+      aria-label="Get the app"
+      ref={barRef}
+    >
+      <div className="eab-row">
+        {icon ? <span className="eab-icon">{icon}</span> : null}
+        <span className="eab-text">
+          <span className="eab-title">{title}</span>
+          <span className="eab-sub">{subtitle}</span>
+        </span>
+        <a className="eab-cta" href={target.href} target="_blank" rel="noopener noreferrer">
+          Get
+        </a>
+        <button className="eab-dismiss" type="button" aria-label="Dismiss" onClick={dismiss}>
+          &#x2715;
+        </button>
+      </div>
     </div>
   );
 }

@@ -8,4 +8,4 @@ export {
   type Platform,
   type BannerTarget,
 } from "./core";
-export { AppBanner, type AppBannerProps } from "./AppBanner";
+export { AppBanner, type AppBannerProps, type AppBannerPlacement } from "./AppBanner";
