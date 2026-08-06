@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
   EDXR_TARGETS,
   type BannerTarget,
@@ -44,13 +44,30 @@ export function AppBanner({ targets = EDXR_TARGETS, icon }: AppBannerProps) {
     };
   }, [targets]);
 
-  // Reserve space below the page content while the bar is visible.
-  useEffect(() => {
+  // Reserve space below the page content while the bar is visible. A
+  // ResizeObserver keeps the reservation in sync as the bar's height
+  // changes after mount (e.g. env(safe-area-inset-bottom) on iOS
+  // orientation change), and useLayoutEffect applies it before paint so
+  // there's no overlap flash. Falls back to a single measurement in
+  // environments without ResizeObserver.
+  useLayoutEffect(() => {
     if (!target || !barRef.current) return;
-    const h = barRef.current.getBoundingClientRect().height;
+    const bar = barRef.current;
     const prev = document.body.style.paddingBottom;
-    document.body.style.paddingBottom = `${Math.ceil(h)}px`;
+    const applyHeight = () => {
+      const h = bar.getBoundingClientRect().height;
+      document.body.style.paddingBottom = `${Math.ceil(h)}px`;
+    };
+    applyHeight();
+    if (typeof ResizeObserver === "undefined") {
+      return () => {
+        document.body.style.paddingBottom = prev;
+      };
+    }
+    const observer = new ResizeObserver(applyHeight);
+    observer.observe(bar);
     return () => {
+      observer.disconnect();
       document.body.style.paddingBottom = prev;
     };
   }, [target]);
