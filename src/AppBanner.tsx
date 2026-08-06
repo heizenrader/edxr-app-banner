@@ -17,10 +17,14 @@ export type AppBannerProps = {
   targets?: Record<Platform, BannerTarget | null>;
   /** App icon rendered at the left (48x48, rounded by the stylesheet). */
   icon?: ReactNode;
-  /** "bottom" (default) or "top" (App-Store-banner style, hides on scroll
-   *  down / reveals on scroll up). A `?eab=top|bottom|off` query param
-   *  overrides this at runtime for live comparison. */
+  /** "bottom" (default) or "top" (App-Store-banner style). A
+   *  `?eab=top|bottom|off` query param overrides this at runtime for live
+   *  comparison. */
   placement?: AppBannerPlacement;
+  /** Hide on scroll down / reveal on scroll up. Defaults to true for top
+   *  placement (Apple's behavior), false (pinned) for bottom. A
+   *  `?eabhide=1|0` query param overrides at runtime. */
+  autoHide?: boolean;
   /** Bold first line. */
   title?: string;
   /** Muted second line, App Store subtitle style. */
@@ -41,12 +45,14 @@ export function AppBanner({
   targets = EDXR_TARGETS,
   icon,
   placement = "bottom",
+  autoHide,
   title = "EducationXR",
   subtitle = "Immersive 3D learning platform",
 }: AppBannerProps) {
   const [target, setTarget] = useState<BannerTarget | null>(null);
   const [livePlacement, setLivePlacement] = useState<AppBannerPlacement>(placement);
-  const [hidden, setHidden] = useState(false); // top-mode scroll state
+  const [liveAutoHide, setLiveAutoHide] = useState(false);
+  const [hidden, setHidden] = useState(false); // auto-hide scroll state
   const barRef = useRef<HTMLDivElement | null>(null);
 
   // Decide whether/where to show, once, after mount.
@@ -58,6 +64,9 @@ export function AppBanner({
       if (override === "off") return;
       const resolved: AppBannerPlacement =
         override === "top" || override === "bottom" ? override : placement;
+      const hideParam = params.get("eabhide");
+      const resolvedAutoHide =
+        hideParam === "1" ? true : hideParam === "0" ? false : (autoHide ?? resolved === "top");
 
       const ua = navigator.userAgent;
       const touch = navigator.maxTouchPoints ?? 0;
@@ -68,17 +77,18 @@ export function AppBanner({
       if (await checkInstalled()) return;
       if (alive) {
         setLivePlacement(resolved);
+        setLiveAutoHide(resolvedAutoHide);
         setTarget(targets[platform]);
       }
     })();
     return () => {
       alive = false;
     };
-  }, [targets, placement]);
+  }, [targets, placement, autoHide]);
 
-  // Top mode: hide on scroll down, reveal on scroll up (rAF-throttled).
+  // Auto-hide: hide on scroll down, reveal on scroll up (rAF-throttled).
   useEffect(() => {
-    if (!target || livePlacement !== "top") return;
+    if (!target || !liveAutoHide) return;
     let lastY = window.scrollY;
     let ticking = false;
     const onScroll = () => {
@@ -95,8 +105,11 @@ export function AppBanner({
       });
     };
     window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, [target, livePlacement]);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      setHidden(false);
+    };
+  }, [target, liveAutoHide]);
 
   // Reserve space + broadcast coordination signals while visible. Pre-paint
   // (layout effect) so the bar never overlaps content for a frame, and a

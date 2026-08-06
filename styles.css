@@ -97,7 +97,10 @@
 
 .eab-cta {
   flex: 0 0 auto;
-  padding: 0.45rem 1.15rem;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 1.15rem;
   border-radius: 999px;
   background: var(--eab-accent, #2196f3);
   color: var(--eab-fg, #ffffff);
@@ -106,17 +109,18 @@
   text-decoration: none;
 }
 
-/* Circular dismiss bubble (Apple-style) with an enlarged invisible hit area. */
+/* Circular dismiss bubble (Apple-style): same height as the CTA pill, with
+   an enlarged invisible hit area. */
 .eab-dismiss {
   flex: 0 0 auto;
   position: relative;
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   border: 0;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.25);
   color: var(--eab-fg, #ffffff);
-  font-size: 0.8rem;
+  font-size: 0.9rem;
   line-height: 1;
   display: inline-flex;
   align-items: center;
@@ -127,11 +131,11 @@
 .eab-dismiss::after {
   content: "";
   position: absolute;
-  inset: -9px;
+  inset: -7px;
 }
 
 .eab-dismiss:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.35);
 }
 
 @media (prefers-reduced-motion: reduce) {
