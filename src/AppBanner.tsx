@@ -3,6 +3,7 @@ import {
   EDXR_TARGETS,
   type BannerTarget,
   type Platform,
+  APP_SCHEME_URL,
   checkInstalled,
   detectPlatform,
   getDismissed,
@@ -50,6 +51,7 @@ export function AppBanner({
   subtitle = "Immersive 3D learning platform",
 }: AppBannerProps) {
   const [target, setTarget] = useState<BannerTarget | null>(null);
+  const [installed, setInstalled] = useState(false);
   const [livePlacement, setLivePlacement] = useState<AppBannerPlacement>(placement);
   const [liveAutoHide, setLiveAutoHide] = useState(false);
   const [hidden, setHidden] = useState(false); // auto-hide scroll state
@@ -74,8 +76,12 @@ export function AppBanner({
       if (platform === "other") return;
       if (isIosSafari(ua, touch)) return; // native Smart App Banner territory
       if (getDismissed()) return;
-      if (await checkInstalled()) return;
+      // Installed no longer hides the banner: with real detection (admin/
+      // marketing serve assetlinks + related_applications) the CTA becomes
+      // "Open" and launches the app scheme instead.
+      const isInstalled = await checkInstalled();
       if (alive) {
+        setInstalled(isInstalled);
         setLivePlacement(resolved);
         setLiveAutoHide(resolvedAutoHide);
         setTarget(targets[platform]);
@@ -175,9 +181,15 @@ export function AppBanner({
           <span className="eab-title">{title}</span>
           <span className="eab-sub">{subtitle}</span>
         </span>
-        <a className="eab-cta" href={target.href} target="_blank" rel="noopener noreferrer">
-          Get
-        </a>
+        {installed ? (
+          <a className="eab-cta" href={APP_SCHEME_URL}>
+            Open
+          </a>
+        ) : (
+          <a className="eab-cta" href={target.href} target="_blank" rel="noopener noreferrer">
+            Get
+          </a>
+        )}
         <button className="eab-dismiss" type="button" aria-label="Dismiss" onClick={dismiss}>
           &#x2715;
         </button>

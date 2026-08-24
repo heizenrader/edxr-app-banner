@@ -6,6 +6,9 @@ export type BannerTarget = { href: string; label: string };
  * Shared link registry — the single source of truth both EducationXR web
  * properties stay in sync through. One Apple listing covers iOS AND Mac.
  */
+/** App-scheme entry point used when the app is known to be installed. */
+export const APP_SCHEME_URL = "edxr://";
+
 export const EDXR_TARGETS: Record<Platform, BannerTarget | null> = {
   ios: {
     href: "https://apps.apple.com/us/app/educationxr/id1479104639",
