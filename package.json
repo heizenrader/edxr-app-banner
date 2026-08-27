@@ -25,6 +25,9 @@
   "peerDependencies": {
     "react": ">=18"
   },
+  "overrides": {
+    "esbuild": "^0.28.1"
+  },
   "devDependencies": {
     "@types/jest": "^29.5.14",
     "@types/react": "^19.0.0",
