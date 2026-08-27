@@ -132,3 +132,11 @@ describe("dismissal", () => {
     spy.mockRestore();
   });
 });
+
+import { APP_SCHEME_URL } from "./core";
+
+describe("APP_SCHEME_URL", () => {
+  it("is the app-scheme home entry point", () => {
+    expect(APP_SCHEME_URL).toBe("edxr://");
+  });
+});
